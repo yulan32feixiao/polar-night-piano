@@ -10,7 +10,7 @@ const W_PERFECT = 0.09, W_GOOD = 0.18, W_MISS = 0.2;     /* 判定窗口，真�
 const LOOK = 2.6;                                          /* 音符从出现到落到琴键，真实秒数 */
 
 /* ================= 设置与曲库（存在本机浏览器） ================= */
-const S = {song: "ode", level: "l2", speed: 1, metroOn: false, metroBpm: 90, label: "jianpu"};
+const S = {tilt: "auto", kbSize: 0.25, song: "ode", level: "l2", speed: 1, metroOn: false, metroBpm: 90, label: "jianpu"};
 try { Object.assign(S, JSON.parse(localStorage.getItem("pk2.set") || "{}")); } catch (e) {}
 const saveS = () => { try { localStorage.setItem("pk2.set", JSON.stringify(S)); } catch (e) {} };
 
@@ -77,28 +77,56 @@ function label(m, html){
   return dots(Math.max(0, oc)) + d + dots(Math.max(0, -oc));
 }
 
+/* 琴键按真钢琴比例：白键宽 = 键高 / 4.6，黑键宽 0.58、长 0.62。
+   键不会被拉宽去填满屏幕；屏幕多出来的地方就多显示几个键（灰色，范围外）。
+   难度范围比屏幕宽时，可以拖上面的小条滑动，演奏时自动跟着音符走。 */
+let scrollX = 0, maxScroll = 0, totalW = 0, tilted = false;
+const keysIn = document.createElement("div");
+keysIn.id = "keysIn";
 function buildKeys(){
-  keysEl.innerHTML = ""; kgeo = []; kByM.clear();
-  const W = keysEl.clientWidth;
-  const whites = [];
-  for (let m = chart.lo; m <= chart.hi; m++) if (!JP.isBlack(m)) whites.push(m);
-  const ww = W / whites.length, bw = ww * 0.6;
-  whites.forEach((m, i) => kgeo.push({m, x: i * ww, w: ww, black: false}));
-  for (let m = chart.lo + 1; m < chart.hi; m++){
-    if (!JP.isBlack(m)) continue;
-    const i = whites.indexOf(m - 1);
-    kgeo.push({m, x: (i + 1) * ww - bw / 2, w: bw, black: true});
+  keysIn.innerHTML = ""; kgeo = []; kByM.clear();
+  if (!keysIn.parentNode) keysEl.appendChild(keysIn);
+  const W = keysEl.clientWidth, KH = keysEl.clientHeight;
+  /* 斜看：琴键往后倒，屏幕上占的高度不变，但键本身更长 → 按比例可以更宽 */
+  tilted = S.tilt === "tilt" || (S.tilt === "auto" && innerWidth > innerHeight);
+  const TH = 55 * Math.PI / 180, P = 1600;
+  const D = tilted ? KH * P / (P * Math.cos(TH) + KH * Math.sin(TH)) : KH;
+  keysEl.classList.toggle("tilt", tilted);
+  keysEl.style.perspective = tilted ? P + "px" : "";
+  keysEl.style.perspectiveOrigin = "50% 0";
+  keysIn.style.height = D + "px";
+  const ww = Math.max(16, D / 4.6), bw = ww * 0.58;
+  const whitesIn = (a, b) => { let n = 0; for (let m = a; m <= b; m++) if (!JP.isBlack(m)) n++; return n; };
+  /* 显示范围 = 难度范围，不够铺满屏幕就往两边各加白键 */
+  let dLo = chart.lo, dHi = chart.hi, flip = 0;
+  const need = Math.ceil(W / ww);
+  while (whitesIn(dLo, dHi) < need && (dLo > 21 || dHi < 108)){
+    if ((flip++ % 2 === 0 && dLo > 21) || dHi >= 108){ do dLo--; while (JP.isBlack(dLo)); }
+    else { do dHi++; while (JP.isBlack(dHi)); }
   }
-  const whitesOnly = JP.LEVELS.find(l => l.id === S.level).whites;
-  if (whitesOnly) kgeo = kgeo.filter(k => !k.black);
+  const whites = [];
+  for (let m = dLo; m <= dHi; m++) if (!JP.isBlack(m)) whites.push(m);
+  whites.forEach((m, i) => kgeo.push({m, x: i * ww, w: ww, black: false}));
+  for (let m = dLo + 1; m < dHi; m++){
+    if (!JP.isBlack(m)) continue;
+    kgeo.push({m, x: (whites.indexOf(m - 1) + 1) * ww - bw / 2, w: bw, black: true});
+  }
+  totalW = whites.length * ww;
+  keysIn.style.width = totalW + "px";
+  const fs = Math.max(9, Math.min(14, ww * 0.3));
   for (const k of kgeo){
     const d = document.createElement("div");
-    d.className = "k " + (k.black ? "b" : "w");
+    const out = k.m < chart.lo || k.m > chart.hi;
+    d.className = "k " + (k.black ? "b" : "w") + (out ? " out" : "");
     d.style.left = k.x + "px"; d.style.width = (k.black ? k.w : k.w + 0.5) + "px";
-    const lb = document.createElement("span");
-    lb.className = "lb"; lb.innerHTML = label(k.m, true);
-    d.appendChild(lb);
-    keysEl.appendChild(d);
+    d.dataset.m = k.m;
+    if (!out && !(k.black && bw < 18)){
+      const lb = document.createElement("span");
+      lb.className = "lb"; lb.innerHTML = label(k.m, true);
+      lb.style.fontSize = (k.black ? fs * 0.78 : fs) + "px";
+      d.appendChild(lb);
+    }
+    keysIn.appendChild(d);
     k.el = d; kByM.set(k.m, k);
   }
   /* 电脑键盘控制范围的小紫条 */
@@ -110,16 +138,74 @@ function buildKeys(){
       bar.className = "kbd-range";
       bar.style.left = a.x + "px"; bar.style.width = (z.x + z.w - a.x) + "px";
       bar.title = "电脑键盘 A–' 控制这一段，Z / X 换八度";
-      keysEl.appendChild(bar);
+      keysIn.appendChild(bar);
     }
   }
   for (const m of downNotes.keys()) kByM.get(m)?.el.classList.add("on");
+  /* 先把难度范围放到屏幕中间 */
+  maxScroll = Math.max(0, totalW - W);
+  const lo = kByM.get(chart.lo), hi = kByM.get(chart.hi);
+  scrollX = lo && hi ? (lo.x + hi.x + hi.w) / 2 - W / 2 : 0;
+  buildNav();
+  applyScroll();
+}
+function applyScroll(){
+  scrollX = Math.max(0, Math.min(maxScroll, scrollX));
+  keysIn.style.transform = "translateX(" + (-scrollX) + "px)" + (tilted ? " rotateX(55deg)" : "");
+  const th = $("navThumb");
+  if (th && totalW) { th.style.left = (scrollX / totalW * 100) + "%"; th.style.width = (keysEl.clientWidth / totalW * 100) + "%"; }
+}
+/* 滑动条：整个显示范围的缩略，紫色是难度范围，白框是屏幕上看到的部分 */
+function buildNav(){
+  const nav = $("nav");
+  const lo = kByM.get(chart.lo), hi = kByM.get(chart.hi);
+  /* 难度范围在屏幕里放得下就不显示滑动条 */
+  nav.hidden = maxScroll < 2 || (hi.x + hi.w - lo.x) <= keysEl.clientWidth - 4;
+  if (nav.hidden) return;
+  $("navBand").style.left = (lo.x / totalW * 100) + "%";
+  $("navBand").style.width = ((hi.x + hi.w - lo.x) / totalW * 100) + "%";
+}
+{
+  const nav = $("nav");
+  let drag = null;
+  const go = e => { const r = nav.getBoundingClientRect(); scrollX = (e.clientX - r.left) / r.width * totalW - keysEl.clientWidth / 2; applyScroll(); };
+  nav.addEventListener("pointerdown", e => { e.preventDefault(); drag = e.pointerId; try { nav.setPointerCapture(drag); } catch (err) {} go(e); });
+  nav.addEventListener("pointermove", e => { if (drag === e.pointerId) go(e); });
+  for (const ev of ["pointerup", "pointercancel"]) nav.addEventListener(ev, () => { drag = null; });
+  keysEl.addEventListener("wheel", e => {
+    if (!maxScroll) return;
+    e.preventDefault(); scrollX += e.deltaX || e.deltaY; applyScroll();
+  }, {passive: false});
+}
+/* 演奏时：接下来要弹的音不在屏幕里，就慢慢滑过去 */
+function follow(now){
+  if (maxScroll < 2) return;
+  let a = Infinity, b = -Infinity;
+  for (const n of chart.mel){
+    if (n.t < now - 0.1) continue;
+    if (n.t > now + LOOK * S.speed * 0.8) break;
+    const k = kByM.get(n.m); if (!k) continue;
+    a = Math.min(a, k.x); b = Math.max(b, k.x + k.w);
+  }
+  if (a > b) return;
+  const W = keysEl.clientWidth, pad = 30;
+  let target = scrollX;
+  if (a < scrollX + pad || b > scrollX + W - pad) target = (a + b) / 2 - W / 2;
+  if (Math.abs(target - scrollX) > 0.5){ scrollX += (target - scrollX) * 0.08; applyScroll(); }
 }
 
 function keyAt(cx, cy){
+  if (tilted){
+    /* 斜着的琴键交给浏览器算点到哪个键（黑键在上层，优先） */
+    const r = keysEl.getBoundingClientRect();
+    if (cx < r.left || cx > r.right) return null;
+    const e = document.elementFromPoint(cx, Math.min(cy, r.bottom - 1));
+    const k = e && e.closest && e.closest(".k");
+    return k && keysIn.contains(k) ? +k.dataset.m : null;
+  }
   const r = keysEl.getBoundingClientRect();
-  const x = cx - r.left, y = cy - r.top;
-  if (x < 0 || x > r.width || y < -6 || y > r.height + 20) return null;
+  const x = cx - r.left + scrollX, y = cy - r.top;
+  if (cx < r.left || cx > r.right || y < -6 || y > r.height + 20) return null;
   for (const k of kgeo) if (k.black && x >= k.x && x <= k.x + k.w && y <= r.height * 0.62) return k.m;
   for (const k of kgeo) if (!k.black && x >= k.x && x < k.x + k.w) return k.m;
   return null;
@@ -283,7 +369,7 @@ function showCard(){
     return;
   }
   const nKeys = kgeo.length;
-  $("cardK").textContent = L.name + " · " + nKeys + " 个键";
+  $("cardK").textContent = L.name + " · 用 " + L.keys + " 个" + (L.whites ? "白键" : "键");
   $("cardTitle").textContent = sg.name;
   $("cardText").innerHTML =
     "1=" + sg.key.replace("#", "♯").replace("b", "♭") + " · " + sg.meter + " · " + sg.bpm + " BPM" +
@@ -354,6 +440,7 @@ function frame(){
     now = -LOOK * S.speed * 0.35;
   }
   metroTick();
+  if (state === "play") follow(now);
   markTargets(state === "play" ? now : null);
   draw(now);
 }
@@ -381,10 +468,11 @@ function draw(now){
   ctx.clearRect(0, 0, W, H);
   if (!chart) return;
   const span = LOOK * S.speed, pps = H / span, hitY = H;
-  ctx.save(); ctx.translate(kOff, 0);
+  ctx.save(); ctx.translate(kOff - scrollX, 0);
 
   /* 轨道：白键之间细线，黑键轨道稍暗 */
   for (const k of kgeo){
+    if (k.m < chart.lo || k.m > chart.hi){ ctx.fillStyle = "rgba(60,50,100,.10)"; ctx.fillRect(k.x, 0, k.w, H); continue; }
     if (k.black){ ctx.fillStyle = "rgba(70,55,130,.07)"; ctx.fillRect(k.x, 0, k.w, H); }
     else { ctx.fillStyle = "rgba(255,255,255,.28)"; ctx.fillRect(k.x + k.w - 0.5, 0, 1, H); }
   }
@@ -551,7 +639,7 @@ $("bpmUp").addEventListener("click", () => bpmStep(5));
 
 $("labelSel").addEventListener("change", e => { S.label = e.target.value; saveS(); buildKeys(); });
 $("demoBtn").addEventListener("click", () => {
-  demo = !demo; $("demoBtn").setAttribute("aria-pressed", String(demo));
+  demo = !demo; $("demoBtn").setAttribute("aria-pressed", String(demo)); $("demoBtn").textContent = demo ? "开" : "关";
   if (state !== "idle"){ state = "idle"; resetRun(); }
   showCard();
 });
@@ -680,7 +768,7 @@ $("edReset").addEventListener("click", () => {
 });
 $("edClose").addEventListener("click", closeEditor);
 $("editor").addEventListener("pointerdown", e => { if (e.target === $("editor")) closeEditor(); });
-$("editBtn").addEventListener("click", () => openEditor(curSong()));
+$("editBtn").addEventListener("click", () => { $("setPop").hidden = true; openEditor(curSong()); });
 $("newSongBtn").addEventListener("click", () => { $("songPop").hidden = true; openEditor(null); });
 $("edExport").addEventListener("click", () => {
   const blob = new Blob([JSON.stringify(songs, null, 2)], {type: "application/json"});
@@ -713,8 +801,26 @@ $("edFile").addEventListener("change", async e => {
 });
 
 /* ================= 启动 ================= */
-function onResize(){ buildKeys(); sizeCanvas(); }
+const KB_SIZES = [0.18, 0.22, 0.25, 0.29, 0.33];
+function applyKbSize(){
+  if (!KB_SIZES.includes(S.kbSize)) S.kbSize = 0.25;
+  document.documentElement.style.setProperty("--kb-total", Math.round(innerHeight * S.kbSize) + "px");
+  $("kbVal").textContent = Math.round(S.kbSize * 100) + "%";
+}
+function kbStep(d){
+  const i = Math.max(0, Math.min(KB_SIZES.length - 1, KB_SIZES.indexOf(S.kbSize) + d));
+  S.kbSize = KB_SIZES[i]; saveS(); applyKbSize(); onResize();
+}
+$("kbDown").addEventListener("click", () => kbStep(-1));
+$("kbUp").addEventListener("click", () => kbStep(1));
+function renderTilt(){ for (const b of $("tiltSeg").children) b.setAttribute("aria-pressed", String(b.dataset.v === S.tilt)); }
+$("tiltSeg").addEventListener("click", e => { const b = e.target.closest("button"); if (!b) return; S.tilt = b.dataset.v; saveS(); renderTilt(); onResize(); });
+$("setBtn").addEventListener("click", e => { e.stopPropagation(); const p = $("setPop"); p.hidden = !p.hidden; });
+addEventListener("pointerdown", e => { const p = $("setPop"); if (!p.hidden && !p.contains(e.target) && !$("setBtn").contains(e.target)) p.hidden = true; });
+function onResize(){ applyKbSize(); buildKeys(); sizeCanvas(); }
 addEventListener("resize", onResize);
+applyKbSize();
+renderTilt();
 fillKeys();
 renderLevels();
 renderMetro();

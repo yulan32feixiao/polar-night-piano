@@ -39,15 +39,7 @@
         </div>
       </div>
 
-      <select id="labelSel" title="琴键上显示什么">
-        <option value="jianpu">简谱 1 2 3</option>
-        <option value="name">音名 C D E</option>
-        <option value="kbd">电脑键位</option>
-        <option value="none">不显示</option>
-      </select>
-
-      <button class="pill" id="demoBtn" aria-pressed="false" title="程序自己弹旋律，你看着学">示范</button>
-      <button class="pill" id="editBtn" title="编辑曲子">编辑曲谱</button>
+      <button class="pill" id="setBtn" title="琴键大小、视角、标注、示范、编辑曲谱">⚙ 设置</button>
     </div>
 
     <div class="playinfo">
@@ -80,6 +72,7 @@
 
   <!-- 琴键 -->
   <section id="piano" class="glass-dark">
+    <div class="nav" id="nav" hidden title="拖动这里左右滑琴键"><i id="navBand"></i><b id="navThumb"></b></div>
     <div id="keys"></div>
   </section>
 </div>
@@ -90,6 +83,33 @@
   <div class="pop-foot">
     <button class="ghost" id="newSongBtn">＋ 新建曲子</button>
   </div>
+</div>
+
+<!-- 设置 -->
+<div class="pop glass setpop" id="setPop" hidden>
+  <div class="srow"><span>琴键大小</span>
+    <div class="stepper small" title="琴键占屏幕的高度；键宽按真钢琴比例跟着变">
+      <button id="kbDown" aria-label="琴键小一点">−</button>
+      <span><b id="kbVal">25%</b></span>
+      <button id="kbUp" aria-label="琴键大一点">＋</button>
+    </div>
+  </div>
+  <div class="srow"><span>视角</span>
+    <div class="seg" id="tiltSeg">
+      <button data-v="auto">自动</button><button data-v="flat">正面</button><button data-v="tilt">斜看</button>
+    </div>
+  </div>
+  <div class="srow"><span>琴键上显示</span>
+    <select id="labelSel">
+      <option value="jianpu">简谱 1 2 3</option>
+      <option value="name">音名 C D E</option>
+      <option value="kbd">电脑键位</option>
+      <option value="none">不显示</option>
+    </select>
+  </div>
+  <div class="srow"><span>示范（程序弹，你看）</span><button class="pill" id="demoBtn" aria-pressed="false">关</button></div>
+  <div class="srow"><span>曲谱</span><button class="pill" id="editBtn">编辑曲谱…</button></div>
+  <p class="snote">琴键大小 = 占屏幕高度；键宽按真钢琴比例跟着变。「自动」= 横屏斜看、竖屏正面。</p>
 </div>
 
 <!-- 曲谱编辑器 -->
