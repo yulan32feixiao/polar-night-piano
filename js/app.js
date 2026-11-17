@@ -10,12 +10,13 @@ const W_PERFECT = 0.09, W_GOOD = 0.18, W_MISS = 0.2;     /* 判定窗口，真�
 const LOOK = 2.6;                                          /* 音符从出现到落到琴键，真实秒数 */
 
 /* ================= 设置与曲库（存在本机浏览器） ================= */
-const S = {song: "twinkle", level: "l2", speed: 1, metroOn: false, metroBpm: 90, label: "jianpu"};
+const S = {song: "ode", level: "l2", speed: 1, metroOn: false, metroBpm: 90, label: "jianpu"};
 try { Object.assign(S, JSON.parse(localStorage.getItem("pk2.set") || "{}")); } catch (e) {}
 const saveS = () => { try { localStorage.setItem("pk2.set", JSON.stringify(S)); } catch (e) {} };
 
 let songs;
 try { songs = JSON.parse(localStorage.getItem("pk2.songs") || "null"); } catch (e) {}
+if (Array.isArray(songs)) songs = songs.filter(s => s && s.id !== "twinkle");   /* 小星星已下架 */
 if (!Array.isArray(songs) || !songs.length) songs = structuredClone(BUILTIN_SONGS);
 const saveSongs = () => { try { localStorage.setItem("pk2.songs", JSON.stringify(songs)); } catch (e) {} };
 const curSong = () => songs.find(s => s.id === S.song) || songs[0];
