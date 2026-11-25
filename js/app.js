@@ -638,6 +638,41 @@ $("bpmDown").addEventListener("click", () => bpmStep(-5));
 $("bpmUp").addEventListener("click", () => bpmStep(5));
 
 $("labelSel").addEventListener("change", e => { S.label = e.target.value; saveS(); buildKeys(); });
+
+/* ---------- 自定义背景：上传一张图，自动套磨砂；默认仍是 img/bg.jpg ---------- */
+const BG_KEY = "pk2.bg";
+const applyBg = d => {
+  if (d) document.documentElement.style.setProperty("--bg-img", `url("${d}")`);
+  else document.documentElement.style.removeProperty("--bg-img");
+  $("bgResetBtn").hidden = !d;
+};
+try { applyBg(localStorage.getItem(BG_KEY)); } catch (e) {}
+$("bgUpBtn").addEventListener("click", () => $("bgFile").click());
+$("bgFile").addEventListener("change", e => {
+  const f = e.target.files && e.target.files[0];
+  if (!f) return;
+  const img = new Image();
+  img.onload = () => {
+    const MAX = 1600, sc = Math.min(1, MAX / Math.max(img.width, img.height));
+    const c = document.createElement("canvas");
+    c.width = Math.max(1, Math.round(img.width * sc));
+    c.height = Math.max(1, Math.round(img.height * sc));
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    let d = "";
+    try { d = c.toDataURL("image/jpeg", 0.85); } catch (err) {}
+    if (!d) return;
+    try { localStorage.setItem(BG_KEY, d); }
+    catch (err) { alert("这张图存不进去（太大了），换小一点的试试"); return; }
+    applyBg(d);
+    URL.revokeObjectURL(img.src);
+  };
+  img.src = URL.createObjectURL(f);
+  e.target.value = "";
+});
+$("bgResetBtn").addEventListener("click", () => {
+  try { localStorage.removeItem(BG_KEY); } catch (e) {}
+  applyBg(null);
+});
 $("demoBtn").addEventListener("click", () => {
   demo = !demo; $("demoBtn").setAttribute("aria-pressed", String(demo)); $("demoBtn").textContent = demo ? "开" : "关";
   if (state !== "idle"){ state = "idle"; resetRun(); }
